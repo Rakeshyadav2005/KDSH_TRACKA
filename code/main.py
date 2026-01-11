@@ -60,6 +60,6 @@ results = pd.DataFrame({
     "prediction": predictions
 })
 
-print("created results.csv")
+print("creating results.csv")
 results.to_csv("../results.csv", index=False)
 print("saved results to ../results.csv")
