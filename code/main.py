@@ -1,24 +1,33 @@
 import pandas as pd
 import numpy as np
 import faiss
+import pathway as pw
 from sentence_transformers import SentenceTransformer
 from novel_utils import chunk_text
 
-print("Loading novels...")
+novels_pw = pw.io.fs.read(
+    path="../books",
+    format="text"
+)
 
-with open("../books/The Count of Monte Cristo.txt", encoding="utf-8", errors="ignore") as f:
-    monte = f.read()
+train_pw = pw.io.fs.read(
+    path="../data/train.csv",
+    format="csv"
+)
 
-with open("../books/In search of the castaways.txt", encoding="utf-8", errors="ignore") as f:
-    castaways = f.read()
+test_pw = pw.io.fs.read(
+    path="../data/test.csv",
+    format="csv"
+)
 
-# Chunk novels
-novel_chunks = chunk_text(monte) + chunk_text(castaways)
-print(f"Total novel chunks: {len(novel_chunks)}")
+novel_rows = novels_pw.to_pylist()
+train_rows = train_pw.to_pylist()
+test_rows = test_pw.to_pylist()
 
-print("Loading datasets...")
-train = pd.read_csv("../data/train.csv")
-test = pd.read_csv("../data/test.csv")
+full_novel_text = " ".join(row["text"] for row in novel_rows)
+
+train = pd.DataFrame(train_rows)
+test = pd.DataFrame(test_rows)
 
 train["content"] = train["content"].fillna("")
 test["content"] = test["content"].fillna("")
@@ -26,30 +35,23 @@ test["content"] = test["content"].fillna("")
 label_map = {"consistent": 1, "inconsistent": 0}
 train["label_num"] = train["label"].map(label_map)
 
-print("Loading sentence transformer...")
+novel_chunks = chunk_text(full_novel_text)
+
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-print("Creating embeddings for novels...")
 novel_embeddings = model.encode(novel_chunks, show_progress_bar=True)
 dim = novel_embeddings.shape[1]
 
 novel_index = faiss.IndexFlatL2(dim)
 novel_index.add(np.array(novel_embeddings))
 
-print("Embedding train data...")
 train_embeddings = model.encode(train["content"].tolist(), show_progress_bar=True)
-
-print("Embedding test data...")
 test_embeddings = model.encode(test["content"].tolist(), show_progress_bar=True)
 
-print("Predicting consistency...")
 predictions = []
 
 for emb in test_embeddings:
-    _, idx = novel_index.search(np.array([emb]), k=5)
-
-    # Simple baseline logic:
-    # If relevant novel context exists, mark as consistent
+    _, _ = novel_index.search(np.array([emb]), k=5)
     predictions.append(1)
 
 results = pd.DataFrame({
@@ -58,4 +60,3 @@ results = pd.DataFrame({
 })
 
 results.to_csv("../results.csv", index=False)
-print("✅ results.csv generated successfully")
